@@ -8,7 +8,7 @@ const registerUser = asyncHandler(async (req, res) => {
     // Get user details
 
     const { username, fullName, email, password } = req.body
-    console.log("Email: ", email)
+    // console.log("Email: ", email)
 
     // Validation - not null input
 
@@ -18,7 +18,7 @@ const registerUser = asyncHandler(async (req, res) => {
 
     // Check if user already exists: username, email
 
-    const existedUser = User.findOne({
+    const existedUser = await User.findOne({
         $or: [{username} , {email}]
     })
 
@@ -28,8 +28,13 @@ const registerUser = asyncHandler(async (req, res) => {
 
     // Check for images - avatar (cover image optional)
 
-    const avatarLocalPath = req.files?.avatar[0].path;
-    const coverImageLocalPath = req.files?.coverImage[0].path;
+    const avatarLocalPath = req.files?.avatar[0]?.path;
+    // const coverImageLocalPath = req.files?.coverImage[0]?.path;
+
+    let coverImageLocalPath;
+    if (req.files && Array.isArray(req.files.coverImage) && req.files.coverImage.length > 0) {
+        coverImageLocalPath = req.files.coverImage[0].path;
+    }
 
     if (!avatarLocalPath) {
         throw new ApiError(400, "Avatar file is Required!")
@@ -46,7 +51,7 @@ const registerUser = asyncHandler(async (req, res) => {
 
     // Create user-object - create entry in db
 
-    const user = User.create({
+    const user = await User.create({
         fullName,
         email,
         avatar: avatar.url,
@@ -57,7 +62,7 @@ const registerUser = asyncHandler(async (req, res) => {
 
     // Remove password and refresh token field from response
 
-    const createdUser = await User.find(User._id).select(
+    const createdUser = await User.find(user._id).select(
         "-password -refreshToken"
     )
 
@@ -69,7 +74,7 @@ const registerUser = asyncHandler(async (req, res) => {
 
     // Return response
     return res.status(201).json(
-        ApiResponse(200, createdUser, "User registered successfully!")
+        new ApiResponse(200, createdUser, "User registered successfully!")
     )
 
 })
