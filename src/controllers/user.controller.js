@@ -20,7 +20,7 @@ const registerUser = asyncHandler(async (req, res) => {
     // Check if user already exists: username, email
 
     const existedUser = await User.findOne({
-        $or: [{username} , {email}]
+        $or: [{ username }, { email }]
     })
 
     if (existedUser) {
@@ -46,7 +46,7 @@ const registerUser = asyncHandler(async (req, res) => {
     const coverImage = await uploadOnCloudinary(coverImageLocalPath)
 
     if (!avatar) {
-        throw new ApiError(400 , "Avatar file is required!")
+        throw new ApiError(400, "Avatar file is required!")
     }
 
     // Create user-object - create entry in db
@@ -87,7 +87,7 @@ const generateAccessAndRefreshToken = async (userId) => {
         user.refreshToken = refreshToken
         await user.save({ validateBeforeSave: false })
         return { accessToken, refreshToken }
-        
+
     } catch (error) {
         throw new ApiError(500, "Something went wrong while generating refresh and access token!")
     }
@@ -107,7 +107,7 @@ const loginUser = asyncHandler(async (req, res) => {
     // find the user
 
     const user = await User.findOne({
-        $or: [{username}, {email}]
+        $or: [{ username }, { email }]
     })
 
     if (!user) {
@@ -130,8 +130,8 @@ const loginUser = asyncHandler(async (req, res) => {
     // Send cookie or Store token
 
     const options = {
-        httpOnly : true,
-        secure : true
+        httpOnly: true,
+        secure: true
     }
 
     // Send res
@@ -148,8 +148,8 @@ const loginUser = asyncHandler(async (req, res) => {
                     refreshToken
                 },
                 "User loggedIn successfully!"
+            )
         )
-    )
 })
 
 const logoutUser = asyncHandler(async (req, res) => {
@@ -163,15 +163,15 @@ const logoutUser = asyncHandler(async (req, res) => {
     )
 
     const options = {
-        httpOnly : true,
-        secure : true
+        httpOnly: true,
+        secure: true
     }
 
     res.status(200)
         .clearCookie("accessToken", options)
         .clearCookie("refreshToken", options)
         .json(
-            new ApiResponse(201,{},"User Logged Out!")
+            new ApiResponse(201, {}, "User Logged Out!")
         )
 })
 
@@ -187,24 +187,24 @@ const refreshAccessToken = asyncHandler(async (req, res) => {
             decodedToken,
             process.env.REFRESH_TOKEN_SECRET
         )
-    
+
         const user = await User.findById(decodedToken?._id)
-    
+
         if (!user) {
             throw new ApiError(401, "Invalid refresh token")
         }
-    
+
         if (incomingRefreshToken !== user?.refreshToken) {
             throw new ApiError(401, "Refresh token is expired or used")
         }
-    
+
         const options = {
             httpOnly: true,
             secure: true
         }
-    
-        const {accessToken, newRefreshToken } = await generateAccessAndRefreshToken(user._id)
-    
+
+        const { accessToken, newRefreshToken } = await generateAccessAndRefreshToken(user._id)
+
         return res.status(200)
             .cookie("accessToken", accessToken, options)
             .cookie("refreshToken", newRefreshToken, options)
@@ -236,17 +236,19 @@ const changeCurrentPassword = asyncHandler(async (req, res) => {
     await user.save({ validateBeforeSave: false })
     return res.status(200)
         .json(
-        new ApiResponse(200,{},"Password changed successfully")
-    )
+            new ApiResponse(200, {}, "Password changed successfully")
+        )
 })
 
 const getCurrentUser = asyncHandler(async (req, res) => {
     return res.status(200)
         .json(
-            200,
-            req.user,
-            "Current user fetched successfully!"
-    )
+            new ApiResponse(
+                200,
+                req.user,
+                "Current user fetched successfully!"
+            )
+        )
 })
 
 const updateAccountDetails = asyncHandler(async (req, res) => {
@@ -264,14 +266,14 @@ const updateAccountDetails = asyncHandler(async (req, res) => {
             }
         },
         {
-            new : true
+            new: true
         }
     ).select("-password")
 
     return res.status(200)
         .json(
-        new ApiResponse(200, user, "Account Details updated successfully!")
-    )
+            new ApiResponse(200, user, "Account Details updated successfully!")
+        )
 })
 
 const updateUserAvatar = asyncHandler(async (req, res) => {
@@ -303,8 +305,8 @@ const updateUserAvatar = asyncHandler(async (req, res) => {
                 200,
                 user,
                 "Avatar uploaded successfully!"
+            )
         )
-    )
 })
 
 const updateUserCoverImage = asyncHandler(async (req, res) => {
@@ -336,8 +338,77 @@ const updateUserCoverImage = asyncHandler(async (req, res) => {
                 200,
                 user,
                 "Cover Image uploaded successfully!"
+            )
         )
-    )
 })
 
-export {registerUser, loginUser, logoutUser, refreshAccessToken, changeCurrentPassword, getCurrentUser, updateAccountDetails, updateUserAvatar, updateUserCoverImage}
+const getUserChannelProfile = asyncHandler(async (req, res) => {
+    const { username } = req.params
+    if (!username?.trim()) {
+        throw new ApiError(400, "Username is misssing!")
+    }
+
+    const channel = await User.aggregate([
+        {
+            $match: {
+                username: username?.toLowerCase()
+            }
+        },
+        {
+            $lookup: {
+                from: "subscriptions",
+                localField: "_id",
+                foreignField: "channel",
+                as: "subscribers"
+            }
+        },
+        {
+            $lookup: {
+                from: "subscriptions",
+                localField: "_id",
+                foreignField: "subscriber",
+                as: "subscribedTo"
+            }
+        },
+        {
+            $addField: {
+                subscribersCount: {
+                    $size: "$subscribers"
+                },
+                channelsSubscribedToCount: {
+                    $size: "$subscribedTo"
+                },
+                isSubscribed: {
+                    $cond: {
+                        if: { $in: [req.user?._id, "$subscribers.subscriber"] },
+                        then: true,
+                        else: false
+                    }
+                }
+            }
+        },
+        {
+            $project: {
+                fullName: 1,
+                username: 1,
+                email: 1,
+                subscribersCount: 1,
+                channelsSubscribedToCount: 1,
+                isSubscribed: 1,
+                avatar: 1,
+                coverImage: 1
+            }
+        }
+    ])
+
+    if (!channel?.length) {
+        throw new ApiError(404, "Channel does not exists!")
+    }
+
+    return res.status(200)
+        .json(
+            new ApiResponse(200, channel[0], "User channel fetched successfully!")
+        )
+})
+
+export { registerUser, loginUser, logoutUser, refreshAccessToken, changeCurrentPassword, getCurrentUser, updateAccountDetails, updateUserAvatar, updateUserCoverImage, getUserChannelProfile }
