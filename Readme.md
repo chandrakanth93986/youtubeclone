@@ -1,3 +1,3 @@
-# A clone of YOUTUBE
+# A clone of YOUTUBE - backend
 
 We use MERN stack.
